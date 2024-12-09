@@ -2,13 +2,20 @@
 title: "Monkey_Mass"
 author: "Jonathan Pertile"
 date: "2024-12-09"
-output: html_document
+output:
+  html_document:
+    toc: true 
+    toc_float: true
 ---
 
-This includes the packages used in the code.
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
 knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_chunk$set(cache = TRUE)
+```
+
+This includes the packages used in the code.
+```{r packages}
 library(dplyr)
 library(tidyr)
 library(ggplot2)
@@ -31,7 +38,7 @@ library(zoo)
 ## Temperature Data
 This is the hourly temperature data from El Pucú Airport in Formosa (hourly). 
 It has also been summarized at the day-level scale (daily).
-```{r}
+```{r temperaturepucu, cache=TRUE}
 # load hourly temperature data and separate date and time components
 hourly <- read.csv("./hourlytemp.csv") |>
   separate(DATE, into = c("Date", "Time"), sep = "T")
@@ -70,7 +77,7 @@ hourly <- hourly %>%
 
 This is the temperature data from Estancia Guaycolec (temperature_eg). 
 It has also been summarized at the day-level scale (temperature_eg_daily).
-```{r}
+```{r temperatureeg, cache=TRUE}
 # read temperature data and convert date column
 temperature_eg <- read.csv("./Temp-edited2_updated02Dec23v3.csv")
 temperature_eg$Date <- as.Date(temperature_eg$Date)
@@ -103,7 +110,7 @@ temperature_eg <- temperature_eg %>%
 
 ## Temperature Functions
 These functions calculate temperature values in the past month. 
-```{r}
+```{r lastmonthfunctions, cache=TRUE}
 last_month_temp <- function(Date) {
   # convert input to a date object
   input_date <- as.Date(Date)
@@ -146,7 +153,7 @@ last_month_temp_ut_prop <- function(Date) {
 ```
 
 These functions calculate temperature values in the past year. 
-```{r}
+```{r lastyearfunctions, cache=TRUE}
 last_year_temp <- function(Date) {
   # convert input to a date object
   input_date <- as.Date(Date)
@@ -212,7 +219,7 @@ last_year_temp_lt_prop <- function(Date) {
 
 # Dataset
 
-```{r}
+```{r dataset, cache=TRUE}
 #load data
 biometrics7 <- read.csv("./biometrics7.csv")
 
@@ -259,5 +266,783 @@ biometrics7_scaled_th <- biometrics7_scaled_th |> mutate(day_of_year = filter(bi
   mutate(BirthWithinNextYear = filter(biometrics7, life_history == "territory_holder")$BirthWithinNextYear) |>
   mutate(BirthWithinLast5Months = filter(biometrics7, life_history == "territory_holder")$BirthWithinLast5Months)
 
+biometrics7$Date <- as.Date(biometrics7$Date)
+biometrics7_scaled$Date <- as.Date(biometrics7_scaled$Date)
+biometrics7_scaled_th$Date <- as.Date(biometrics7_scaled_th$Date)
+```
+
+# Bayesian Models
+
+## Model 1
+```{r model1, cache=TRUE}
+# fit a bayesian regression model for weight with a cyclic spline for day_of_year,
+# fixed effects for decades_since_first_entry and life_history, 
+# and a random intercept for Subject
+Model1 <- brm(
+  formula = Weight ~ s(day_of_year, bs = "cc") + decades_since_first_entry + 
+    life_history + (1 | Subject),  # model formula
+  data = biometrics7_scaled,  # scaled dataset
+  family = gaussian(),  # gaussian family for continuous outcome
+  iter = 6000,  # number of iterations
+  chains = 4,  # number of mcmc chains
+  control = list(adapt_delta = 0.99),  # control settings to improve convergence
+  prior = c(
+    prior(normal(0.05, 0.2), class = "b", coef = "decades_since_first_entry"),  # prior for decades_since_first_entry
+    prior(normal(1, 1), class = "b", coef = "life_historyfloater"),  # prior for life_history = floater
+    prior(normal(1, 1), class = "b", coef = "life_historyterritory_holder"),  # prior for life_history = territory_holder
+    prior(cauchy(0, 1), class = "sd", group = "Subject")  # prior for subject-level random effects
+  ),
+  cores = parallel::detectCores()  # use all available cores for faster computation
+)
+
+# summarize the posterior results with credible intervals at 5.5% and 94.5%
+summary_results1 <- posterior_summary(Model1, probs = c(0.055, 0.945), robust = TRUE)
+
+# round the summary results to 2 decimal places for better readability
+rounded_summary1 <- round(summary_results1, 2)
+
+# view the rounded summary results
+knitr::kable(rounded_summary1)
+
+```
+
+## Model 2
+### Model 2F
+```{r model2f, cache=TRUE}
+# fit model 2 for females with weight as the outcome and predictors for 
+#temperature, fruit, and birth factors
+Model2F <- brm(
+  formula = Weight ~ temp_new_year + twelvemonthfruit + BirthWithinYearfactor +
+    s(day_of_year, bs = "cc") + 
+    # include smooth term for day of year with cyclic cubic splines
+    (1 | Subject),  # random effect for subject
+  data = filter(biometrics7_scaled_th, Sex == "F"),  # filter data for females
+  family = gaussian(),  # use gaussian distribution for the outcome
+  iter = 5000,  # set number of iterations
+  chains = 4,  # set number of chains for sampling
+  control = list(adapt_delta = 0.999),  # increase adapt_delta for better convergence
+  prior = c(
+    prior(normal(0, 0.7), class = "b"),  # set normal prior for fixed effects
+    prior(cauchy(0, 0.7), class = "sd", group = "Subject") 
+    # set cauchy prior for random effects
+  )
+)
+
+# summarize the posterior results for model 2f
+summary_results2F <- posterior_summary(Model2F, probs = c(0.055, 0.945), robust = TRUE)
+rounded_summary2F <- round(summary_results2F, 2)  # round summary results
+knitr::kable(rounded_summary2F)
+```
+
+### Model 2M
+```{r model2m, cache=TRUE}
+# fit model 2 for males with weight as the outcome and predictors 
+#for temperature #fruit, and birth factors
+Model2M <- brm(
+  formula = Weight ~ temp_new_year + twelvemonthfruit + BirthWithinYearfactor +
+    s(day_of_year, bs = "cc") + 
+    # include smooth term for day of year with cyclic cubic splines
+    (1 | Subject),  # random effect for subject
+  data = filter(biometrics7_scaled_th, Sex == "M"),  # filter data for males
+  family = gaussian(),  # use gaussian distribution for the outcome
+  iter = 5000,  # set number of iterations
+  chains = 4,  # set number of chains for sampling
+  control = list(adapt_delta = 0.999),  # increase adapt_delta for better convergence
+  prior = c(
+    prior(normal(0, 0.7), class = "b"),  # set normal prior for fixed effects
+    prior(cauchy(0, 0.7), class = "sd", group = "Subject") 
+    # set cauchy prior for random effects
+  )
+)
+
+# summarize the posterior results for model 2m
+summary_results2M <- posterior_summary(Model2M, probs = c(0.055, 0.945), robust = TRUE)
+rounded_summary2M <- round(summary_results2M, 2)  # round summary results
+knitr::kable(rounded_summary2M)
+
+```
+
+## Model 3
+### Model 3F
+```{r model3f, cache=TRUE}
+# fit the model for females (Model3F)
+Model3F <- brm(
+  formula = Weight ~  temp_new + onemonthfruit + BirthWithinLast5Monthsfactor +
+    decades_since_first_entry + (1 | Subject), 
+  data = filter(biometrics7_scaled_th, Sex == "F"),
+  family = gaussian(),
+  iter = 5000, 
+  chains = 4,
+  control = list(adapt_delta = 0.999),
+  prior = c(
+    prior(normal(0, 0.7), class = "b"), 
+    prior(normal(0, 0.33), class = "b", coef = "decades_since_first_entry"),  
+    prior(cauchy(0, 0.7), class = "sd", group = "Subject")
+  ))
+
+
+summary_results3F <- posterior_summary(Model3F, 
+                                       probs = c(0.055, 0.945), 
+                                       robust = TRUE)
+rounded_summary3F <- round(summary_results3F, 2)
+knitr::kable(rounded_summary3F)
+```
+
+### Model 3M
+```{r model3m, cache=TRUE}
+# fit the model for males (Model3M)
+Model3M <- brm(
+  formula = Weight ~  temp_new + onemonthfruit + BirthWithinLast5Monthsfactor +
+    decades_since_first_entry + (1 | Subject), 
+  data = filter(biometrics7_scaled_th, Sex == "M"),
+  family = gaussian(),
+  iter = 5000, 
+  chains = 4,
+  control = list(adapt_delta = 0.999),
+  # cores = parallel::detectCores(), 
+  prior = c(
+    prior(normal(0, 0.7), class = "b"), 
+    prior(normal(0, 0.33), class = "b", coef = "decades_since_first_entry"),  
+    prior(cauchy(0, 0.7), class = "sd", group = "Subject")
+  ))
+
+summary_results3M <- posterior_summary(Model3M, probs = c(0.055, 0.945), robust = TRUE)
+rounded_summary3M <- round(summary_results3M, 2)
+knitr::kable(rounded_summary3M)
+
+```
+
+## Model 4
+```{r model4, cache=TRUE}
+set.seed(13)
+
+Model4 <- brm(
+  formula = Weight ~ firstyearfruit + firstyeartemp_new + log(age, base = 2) + 
+    (1 | Subject), 
+  data = filter(biometrics7_scaled, age > 1),
+  family = gaussian(),
+  iter = 5000,
+  chains = 4,
+  prior = c(
+    prior(normal(1, 2), class = "b"), 
+    prior(normal(0, 1), class = "b", coef = "firstyearfruit"), 
+    prior(normal(0, 1), class = "b", coef = "firstyeartemp_new"),
+    prior(cauchy(0, 1), class = "sd", group = "Subject")
+  ),
+  # set control parameters for model fitting
+  control = list(adapt_delta = 0.99)
+)
+
+summary_results4 <- posterior_summary(Model4, probs = c(0.055, 0.945), robust = TRUE)
+rounded_summary4 <- round(summary_results4, 2)
+knitr::kable(rounded_summary4)
+```
+
+## Model 5
+```{r model5, cache=TRUE}
+Model5 <- brm(
+  formula = Bodylength ~ s(day_of_year, bs = "cc") + decades_since_first_entry + 
+    life_history + (1 | Subject), 
+  data = biometrics7_scaled,
+  family = gaussian(),
+  iter = 6000, 
+  chains = 4,
+  control = list(adapt_delta = 0.99),
+  prior = c(
+    prior(normal(0.05, 0.2), class = "b", coef = "decades_since_first_entry"),
+   prior(normal(1, 1), class = "b", coef = "life_historyfloater"),
+    prior(normal(1, 1), class = "b", coef = "life_historyterritory_holder"),
+    prior(cauchy(0, 1), class = "sd", group = "Subject")
+  ),
+  cores = parallel::detectCores()
+)
+
+# Summarize the model
+summary(Model5) 
+
+summary_resultsModel5 <- 
+  posterior_summary(Model5, probs = c(0.055, 0.945), robust = TRUE)
+rounded_summaryModel5 <- round(summary_resultsModel5, 2)
+knitr::kable(rounded_summaryModel5)
+```
+
+# Simulation
+```{r simulation, cache=TRUE}
+set.seed(13)
+th_narm <- biometrics7 |> filter(life_history == "territory_holder") |>
+  filter(!is.na(Weight)) |> filter(BirthWithinYearfactor != "unknown")
+
+# number of bootstrap iterations
+n_iterations <- 20000
+
+# function to perform a single bootstrap iteration
+bootstrap_function <- function(data) {
+  # resample the data with replacement
+  bootstrap_sample <- data |>
+    sample_n(nrow(data), replace = TRUE)
+  
+  # calculate mean weight for each BirthWithinYearfactor in the bootstrap sample
+  means <- bootstrap_sample |>
+    group_by(BirthWithinYearfactor) |>
+    summarize(mean_weight = mean(Weight, na.rm = TRUE))
+  
+  # extract means for "birth" and "no birth"
+  mean_birth <- means |>
+    filter(BirthWithinYearfactor == "birth") |>
+    pull(mean_weight)
+  mean_no_birth <- means |>
+    filter(BirthWithinYearfactor == "no birth") |>
+    pull(mean_weight)
+  
+  # calculate the difference between means
+  diff <- mean_birth - mean_no_birth
+  
+  # generate a random sample from a truncated normal distribution (0, 1)
+  random_value <- rtruncnorm(1, a = 0, b = 1, mean = 0.7, sd = 0.2)
+  
+  # calculate the product
+  product <- diff * random_value
+  
+  # return a data frame with the results
+  return(tibble(bootstrapped_diff = diff, random_value = random_value, product = product))
+}
+
+# repeat the bootstrap process
+bootstrap_results <- map_df(1:n_iterations, ~bootstrap_function(th_narm))
+```
+
+### Simulation results
+```{r simulationresults, cache=TRUE}
+# calculate mean and 89% interval quantiles for bootstrapped_diff
+bootstrapped_diff_mean <- mean(bootstrap_results$bootstrapped_diff, na.rm = TRUE)
+bootstrapped_diff_lower <- quantile(bootstrap_results$bootstrapped_diff, 0.055, na.rm = TRUE)
+bootstrapped_diff_upper <- quantile(bootstrap_results$bootstrapped_diff, 0.945, na.rm = TRUE)
+
+# calculate mean and 89% interval quantiles for random_value
+random_value_mean <- mean(bootstrap_results$random_value, na.rm = TRUE)
+random_value_lower <- quantile(bootstrap_results$random_value, 0.055, na.rm = TRUE)
+random_value_upper <- quantile(bootstrap_results$random_value, 0.945, na.rm = TRUE)
+
+# calculate mean and 89% interval quantiles for product
+product_mean <- mean(bootstrap_results$product, na.rm = TRUE)
+product_lower <- quantile(bootstrap_results$product, 0.055, na.rm = TRUE)
+product_upper <- quantile(bootstrap_results$product, 0.945, na.rm = TRUE)
+
+# output results in a readable, formatted text block
+cat(paste("Selective differential:\n",
+          "  Mean: ", round(bootstrapped_diff_mean, 3), "\n",
+          "  89% Interval: [", round(bootstrapped_diff_lower, 3), ", ", round(bootstrapped_diff_upper, 3), "]\n\n",
+          
+          "Heritability:\n",
+          "  Mean: ", round(random_value_mean, 3), "\n",
+          "  89% Interval: [", round(random_value_lower, 3), ", ", round(random_value_upper, 3), "]\n\n",
+          
+          "Response to selection:\n",
+          "  Mean: ", round(product_mean, 3), "\n",
+          "  89% Interval: [", round(product_lower, 3), ", ", round(product_upper, 3), "]\n", sep = ""))
+```
+
+
+# Visualizations
+## Figure 1
+```{r figure1, cache=TRUE}
+ggplot(filter(biometrics7, life_history %in% c("territory_holder", "floater", "predispersal")), aes(x = Date, y = Weight)) +
+  # scatter plot with color and shape by life history
+  geom_point(aes(color = life_history, shape = life_history), size = 4, alpha = 0.7) +
+  # manually set color palette for life history
+  scale_color_manual(values = lhcolor_palette) +
+  # add linear model smooth line with shaded confidence interval
+  geom_smooth(method = "lm", color = "black", se = TRUE, fill = "lightgray", level = 0.89) +
+  # facet by sex and life history with custom labels
+  facet_grid(Sex ~ life_history,
+             labeller = labeller(
+               Sex = c("M" = "Male", "F" = "Female"),
+               life_history = c("predispersal" = "Predispersal",
+                                "floater" = "Floater",
+                                "territory_holder" = "Reproductive adult")
+             )) +
+  # minimal theme for cleaner look
+  theme_minimal() +
+  # customize axis labels and theme elements
+  labs(x = "Year", y = "Mass\n(g)") +
+  theme(
+    text = element_text(family = "Helvetica", size = 14),
+    axis.text = element_text(size = 14),
+    axis.text.y = element_text(size = 12, angle = 0, vjust = 0.5),
+    axis.text.x = element_text(size = 9),
+    axis.title.y = element_text(angle = 0, vjust = 0.5, size = 14),
+    panel.spacing = unit(1, "lines"),
+    strip.text.x = element_text(size = 12),  # styling for life history labels
+    strip.text.y = element_text(size = 12, angle = 0, hjust = 0)  # styling for sex labels
+  ) +
+  # remove the legend for color and shape
+  guides(color = "none", shape = "none") +
+  # customize x-axis with date limits and breaks
+  scale_x_date(
+    limits = as.Date(c("1999-01-01", "2023-12-31")),
+    breaks = seq(as.Date("1999-01-01"), as.Date("2023-12-31"), by = "6 years"),
+    date_labels = "%Y"
+  )
+
+```
+
+## Figure 2
+```{r figure2, cache=TRUE}
+# set window size (365 days) for rolling calculations
+window_size <- 365
+
+# calculate rolling mean temperature and coverage for the daily dataset
+daily <- daily %>%
+  arrange(Date) %>%  # arrange the data by Date
+  mutate(
+    # calculate rolling mean temperature using a window of 365 days
+    mean_temp_roll = rollapply(mean_temp, width = window_size, FUN = mean, fill = NA, align = "center"),
+    
+    # calculate coverage as the fraction of unique days in the window
+    coverage = rollapply(Date, width = window_size, FUN = function(dates) {
+      # get the range of dates in the window
+      date_range <- seq(min(dates), max(dates), by = "1 day")
+      
+      # calculate the fraction of unique days in the date range
+      unique_days <- length(unique(dates))
+      total_days <- length(date_range)
+      
+      # return coverage as a percentage
+      return((unique_days / total_days) * 100)
+    }, fill = NA, align = "center")
+  )
+
+# filter daily dataset for mean_temp_roll where coverage is at least 95%
+filtered_daily <- daily %>% filter(coverage >= 95)
+
+# plot mean temperature for filtered data with a smooth line
+ggplot(filtered_daily, aes(x = Date, y = mean_temp_roll)) +
+  # scatter plot of mean temperature with black points
+  geom_point(color = "black", size = 0.4, alpha = 0.75) + 
+  
+  # add a smoothed line using loess method with a maroon color and no confidence interval
+  geom_smooth(span = 0.4, method = "loess", color = "maroon", linewidth = 1.5, se = F) + 
+  
+  # apply minimal theme
+  theme_minimal() +
+  
+  # add labels for y and x axes
+  labs(y = "365-day\nmean\ntemperature\n(ºC)", x = "Year") +
+  
+  # customize x-axis with specific limits and breaks for every 6 years
+  scale_x_date(
+    limits = as.Date(c("1998-01-01", "2023-12-31")),
+    breaks = seq(as.Date("1999-01-01"), as.Date("2024-12-31"), by = "6 years"),
+    date_labels = "%Y"
+  ) +
+  
+  # customize text size and appearance for axis labels and titles
+  theme(
+    text = element_text(family = "Helvetica", size = 15),
+    axis.text = element_text(size = 14),
+    axis.text.y = element_text(size = 12, angle = 0, vjust = 0.5),
+    axis.text.x = element_text(size = 10),
+    axis.title.y = element_text(angle = 0, vjust = 0.5, size = 13)
+  )
+
+```
+
+## Figure 3
+This is slightly more complicated, requiring using Model 4 to adjust appropriately.
+```{r figure3, cache=TRUE}
+# step 1: calculate the predicted values without firstyeartemp_new
+# extract predictions from the model with all terms except firstyeartemp_new
+fitted_no_temp <- predict(Model4, allow_new_levels = T, newdata = biometrics7_scaled |>
+                           filter(age > 1) |>
+                           mutate(firstyeartemp_new = 0))[, "Estimate"]
+
+# step 2: subtract these predicted values from the observed data
+biometrics7_scaled_subtracted <- biometrics7_scaled |>
+  filter(age > 1) |>
+  mutate(
+    adjusted_weight = Weight - fitted_no_temp  # adjusted weight after controlling for other variables
+  )
+
+
+# Generate conditional effects with an 89% credible interval
+temp_effects <- conditional_effects(Model4, effects = "firstyeartemp_new", probs = c(0.055, 0.945))
+
+# Extract the conditional effects data
+temp_data <- temp_effects$firstyeartemp_new
+
+# step 3: plot the adjusted points along with the conditional effects
+ggplot() +
+  # plot the conditional effects of temperature
+  geom_ribbon(data = temp_data, aes(x = firstyeartemp_new, ymin = lower__, ymax = upper__), alpha = 0.2, fill = "lightgray") +
+  
+  # plot the adjusted points with custom shapes for life_history
+  geom_point(data = biometrics7_scaled_subtracted, 
+             aes(x = firstyeartemp_new, y = adjusted_weight, color = life_history, shape = life_history), 
+             alpha = 0.7, size = 6) +
+  
+  # customize shapes: square for "territory_holder", circle for "predispersal"
+  scale_shape_manual(values = c("territory_holder" = 15, "predispersal" = 16)) + 
+  scale_color_manual(values = lhcolor_palette) +
+  
+  # add the prediction line
+  geom_line(data = temp_data, aes(x = firstyeartemp_new, y = estimate__), color = "black") +
+  
+  # customize labels
+  labs(
+    x = "mean temperature during\nfirst year of life (standardized)",
+    y = "body mass\n(adjusted and\nstandardized)"
+  ) + 
+  # make y-axis label horizontal and centered
+  theme_minimal() + 
+  theme(text = element_text(family = "Helvetica", size = 14),
+        axis.text = element_text(size = 14),
+        axis.text.y = element_text(size = 12, angle = 0, vjust = 0.5),
+        axis.text.x = element_text(size = 9),
+        axis.title.y = element_text(angle = 0, vjust = 0.5, size = 14)) + 
+  guides(color = FALSE, shape = FALSE) + 
+  xlim(NA, 1.5)
+```
+
+## Figure 4
+```{r figure4, cache=TRUE}
+# bin the bootstrapped diff and random value with reduced number of bins
+bootstrap_results_binned <- bootstrap_results |>
+  mutate(
+    bootstrapped_diff_bin = cut(bootstrapped_diff, breaks = seq(-75, 75, by = 25)),  # reduced number of bins
+    random_value_bin = cut(random_value, breaks = seq(0, 1, by = 0.2))  # reduced number of bins
+  ) |>
+  group_by(bootstrapped_diff_bin, random_value_bin) |>
+  summarize(
+    mean_product = mean(product, na.rm = TRUE),  # calculate mean of product for each bin
+    .groups = 'drop'  # avoid keeping grouping structure
+  )
+
+# create the heatmap with improved axis readability
+ggplot(filter(bootstrap_results_binned, !is.na(bootstrapped_diff_bin)), aes(x = bootstrapped_diff_bin, y = random_value_bin, fill = mean_product)) +
+  geom_tile() +  # create heatmap tiles
+  scale_fill_gradient2(low = "red", mid = "#FAF9F6", high = "blue") +  # custom color gradient
+  theme_minimal() +  # minimal theme for cleaner look
+  theme(
+    text = element_text(family = "Helvetica", size = 15),  # set font family and size for text
+    axis.text.x = element_text(size = 12, angle = 30, hjust = 1),  # rotate x-axis labels for better readability
+    axis.text.y = element_text(size = 12),  # increase size of y-axis labels
+    axis.title = element_text(size = 14),  # set axis title size
+    axis.title.y = element_text(angle = 0, vjust = 0.5, size = 14),  # vertical adjustment for y-axis title
+    axis.ticks.x = element_blank(),  # remove x-axis ticks
+    axis.ticks.y = element_blank()   # remove y-axis ticks
+  ) + 
+  labs(x = "\nSelective differential (g)", y = "Heritability   ", fill = "Response to\nselection (g)")  # customize axis labels
+
+cat(paste("Selective differential:\n",
+          "  Mean: ", round(bootstrapped_diff_mean, 3), "\n",
+          "  89% Interval: [", round(bootstrapped_diff_lower, 3), ", ", round(bootstrapped_diff_upper, 3), "]\n\n",
+          
+          "Heritability:\n",
+          "  Mean: ", round(random_value_mean, 3), "\n",
+          "  89% Interval: [", round(random_value_lower, 3), ", ", round(random_value_upper, 3), "]\n\n",
+          
+          "Response to selection:\n",
+          "  Mean: ", round(product_mean, 3), "\n",
+          "  89% Interval: [", round(product_lower, 3), ", ", round(product_upper, 3), "]\n", sep = ""))
+```
+
+## Figure S1A
+```{r figures1a, cache=TRUE}
+# define von bertalanffy growth equation
+von_bertalanffy <- function(age, A, K, t0) { 
+  A * (1 - exp(-K * (age - t0))) 
+}
+
+# filter out NA values
+filtered_data <- biometrics7 |> 
+  filter(!is.na(life_history))
+
+# fit von bertalanffy curve to data with different starting values and optimization algorithm
+fit <- nls(Weight ~ von_bertalanffy(age, A, K, t0),  
+           data = filtered_data,
+           start = list(A = 1000, K = 0.1, t0 = 0),  # adjust starting values
+           algorithm = "port")  # try a different optimization algorithm
+
+# extract coefficients
+coefficients <- coef(fit)
+
+# plot data and von bertalanffy curve
+ggplot(filtered_data, aes(x = age, y = Weight)) + 
+  geom_point(size = 4, alpha = 0.7, aes(color = life_history, shape = life_history)) + 
+  geom_smooth(method = "nls",  
+              formula = y ~ von_bertalanffy(x, A, K, t0),  
+              se = FALSE,  
+              color = "black", 
+              method.args = list(start = coefficients)) + 
+  scale_color_manual( 
+    values = lhcolor_palette,  
+    labels = c("predispersal" = "Predispersal",  
+               "floater" = "Floater",  
+               "territory_holder" = "Reproductive adult") 
+  ) + 
+  scale_shape_manual( 
+    values = c("predispersal" = "circle",  # you can adjust shapes as needed
+               "floater" = "triangle",  
+               "territory_holder" = "square"),  
+    labels = c("predispersal" = "Predispersal",  
+               "floater" = "Floater",  
+               "territory_holder" = "Reproductive adult") 
+  ) + 
+  labs(x = "Age (years)", y = "Weight\n(g)",  
+       color = "Life History Stage", shape = "Life History Stage") + 
+  theme_minimal() + 
+  scale_x_continuous( 
+    limits = c(0, 8), 
+    breaks = seq(0, 8, by = 2) 
+  ) + 
+  theme( 
+    text = element_text(family = "Helvetica", size = 15), 
+    axis.text = element_text(size = 14), 
+    axis.text.y = element_text(size = 12, angle = 0, vjust = 0.5), 
+    axis.text.x = element_text(size = 12), 
+    axis.title.y = element_text(angle = 0, vjust = 0.5, size = 14)
+  )
+```
+
+## Figure S1B
+```{r figures1b, cache=TRUE}
+# define von bertalanffy growth equation
+von_bertalanffy <- function(age, A, K, t0) { 
+  A * (1 - exp(-K * (age - t0))) 
+}
+
+# filter out NA values and bodylength greater than 40
+filtered_data <- biometrics7 |> 
+  filter(!is.na(life_history)) |> 
+  filter(Bodylength > 40)
+
+# fit von bertalanffy curve to bodylength data with adjusted starting values and iteration limit
+fit_bodylength <- nls(Bodylength ~ von_bertalanffy(age, A, K, t0),  
+                      data = filtered_data,
+                      start = list(A = 500, K = 0.05, t0 = 0),  # adjust starting values
+                      algorithm = "port",  # use the "port" algorithm
+                      control = list(maxiter = 100))  # increase iteration limit
+
+# extract coefficients for bodylength
+coefficients_bodylength <- coef(fit_bodylength)
+
+# plot bodylength data and von bertalanffy curve
+ggplot(filtered_data, aes(x = age, y = Bodylength)) + 
+  geom_point(size = 4, alpha = 0.7, aes(color = life_history, shape = life_history)) + 
+  geom_smooth(method = "nls",  
+              formula = y ~ von_bertalanffy(x, A, K, t0),  
+              se = FALSE,  
+              color = "black", 
+              method.args = list(start = coefficients_bodylength)) + 
+  scale_color_manual( 
+    values = lhcolor_palette,  
+    labels = c("predispersal" = "Predispersal",  
+               "floater" = "Floater",  
+               "territory_holder" = "Reproductive adult") 
+  ) + 
+  scale_shape_manual( 
+    values = c("predispersal" = "circle",  # you can adjust shapes as needed
+               "floater" = "triangle",  
+               "territory_holder" = "square"),  
+    labels = c("predispersal" = "Predispersal",  
+               "floater" = "Floater",  
+               "territory_holder" = "Reproductive adult") 
+  ) + 
+  labs(x = "Age (years)", y = "Body\nlength\n(cm)",  
+       color = "Life History Stage", shape = "Life History Stage") + 
+  theme_minimal() + 
+  scale_x_continuous( 
+    limits = c(0, 8), 
+    breaks = seq(0, 8, by = 2) 
+  ) + 
+  theme( 
+    text = element_text(family = "Helvetica", size = 15), 
+    axis.text = element_text(size = 14), 
+    axis.text.y = element_text(size = 12, angle = 0, vjust = 0.5), 
+    axis.text.x = element_text(size = 12), 
+    axis.title.y = element_text(angle = 0, vjust = 0.5, size = 14)
+  )
+```
+
+## Figure S2
+```{r figures2, cache=TRUE}
+# find the common dates between the two datasets
+common_dates <- intersect(temperature_eg_daily$Date, daily$Date)
+
+# filter each dataset to include only common dates
+temperature_eg_daily_common <- filter(temperature_eg_daily, Date %in% as.Date(common_dates))
+daily_common <- filter(daily, Date %in% as.Date(common_dates))
+
+# plot the data with only common dates
+ggplot() +
+  # smooth line for temperature_eg_daily dataset
+  geom_smooth(data = temperature_eg_daily_common, aes(x = day_of_year, y = mean_temp), color = "navy", 
+              method = "gam", formula = y ~ s(x, bs = "cc")) + 
+  # smooth line for daily dataset
+  geom_smooth(data = daily_common, aes(x = day_of_year, y = mean_temp), color = "maroon", 
+              method = "gam", formula = y ~ s(x, bs = "cc")) + 
+  theme_minimal() + 
+  labs(x = "Day of year", y = "Temperature\n(ºC)") + 
+  theme(
+    text = element_text(family = "Helvetica", size = 14),  # set text size and family
+    axis.text = element_text(size = 14),  # set axis text size
+    axis.text.y = element_text(angle = 0, vjust = 0.5, size = 12),  # adjust y-axis text size and alignment
+    axis.text.x = element_text(size = 9),  # adjust x-axis text size
+    axis.title.y = element_text(angle = 0, vjust = 0.5, size = 14),  # adjust y-axis title size
+    panel.spacing = unit(1, "lines"),  # adjust panel spacing
+    strip.text.x = element_text(size = 12),  # set label size for x-axis facets
+    strip.text.y = element_text(size = 12, angle = 0, hjust = 0)  # set label size and alignment for y-axis facets
+  )
+```
+
+## Figure S3
+```{r figures3, cache=TRUE}
+# define a function to calculate past 365-day coverage for a given dataset
+calculate_coverage <- function(df) { 
+  df |>
+    arrange(Date) |>
+    mutate(
+      coverage = sapply(Date, function(current_date) {
+        # define the past 365-day window
+        start_date <- current_date - 364 
+        # filter dates within this window
+        date_window <- df$Date[df$Date >= start_date & df$Date <= current_date] 
+        # calculate coverage as the fraction of unique days over the full 365 days
+        coverage <- (length(unique(date_window)) / 365) * 100
+        return(coverage)
+      })
+    )
+}
+
+# apply the coverage calculation function to each dataset
+temperature_eg_daily <- calculate_coverage(temperature_eg_daily)
+daily <- calculate_coverage(daily)
+
+# plot the 365-day coverage lines for both datasets
+ggplot() + 
+  # 365-day coverage line for temperature_eg_daily
+  geom_line(data = temperature_eg_daily, aes(x = Date, y = coverage), color = "navy") + 
+  # 365-day coverage line for daily
+  geom_line(data = daily, aes(x = Date, y = coverage), color = "maroon") + 
+  # horizontal line at 95% coverage
+  geom_hline(yintercept = 95, linetype = "dashed", color = "gray50") + 
+  theme_minimal() + 
+  labs(x = "Year", y = "365-day\ncoverage\n(%)") + 
+  scale_y_continuous(limits = c(0, 100)) + 
+  theme(
+    text = element_text(family = "Helvetica", size = 14), # set text size and family
+    axis.text = element_text(size = 14), # set axis text size
+    axis.text.y = element_text(angle = 0, vjust = 0.5, size = 12), # adjust y-axis text size and alignment
+    axis.text.x = element_text(size = 9), # adjust x-axis text size
+    axis.title.y = element_text(angle = 0, vjust = 0.5, size = 14), # adjust y-axis title size
+    panel.spacing = unit(1, "lines"), # adjust panel spacing
+    strip.text.x = element_text(size = 12), # set label size for x-axis facets
+    strip.text.y = element_text(size = 12, angle = 0, hjust = 0) # set label size and alignment for y-axis facets
+  ) + 
+  scale_x_date(
+    limits = as.Date(c("1999-01-01", "2023-12-31")), 
+    breaks = seq(as.Date("1999-01-01"), as.Date("2023-12-31"), by = "6 years"), 
+    date_labels = "%Y"
+  )
+```
+
+## Figure S4
+```{r figures4, cache=TRUE}
+# define a function to calculate past 30-day coverage for a given dataset
+calculate_coverage_30_days <- function(df) { 
+  df |>
+    arrange(Date) |>
+    mutate(
+      coverage = sapply(Date, function(current_date) {
+        # define the past 30-day window
+        start_date <- current_date - 29 
+        # filter dates within this window
+        date_window <- df$Date[df$Date >= start_date & df$Date <= current_date] 
+        # calculate coverage as the fraction of unique days over the full 30 days
+        coverage <- (length(unique(date_window)) / 30) * 100
+        return(coverage)
+      })
+    )
+}
+
+# apply the coverage calculation function to each dataset
+temperature_eg_daily <- calculate_coverage_30_days(temperature_eg_daily)
+daily <- calculate_coverage_30_days(daily)
+
+# plot the 30-day coverage lines for both datasets
+ggplot() + 
+  # 30-day coverage line for temperature_eg_daily
+  geom_line(data = temperature_eg_daily, aes(x = Date, y = coverage), color = "navy") + 
+  # 30-day coverage line for daily
+  geom_line(data = daily, aes(x = Date, y = coverage), color = "maroon") + 
+  # horizontal line at 95% coverage
+  geom_hline(yintercept = 95, linetype = "dashed", color = "gray50") + 
+  theme_minimal() + 
+  labs(x = "Year", y = "30-day\ncoverage\n(%)") + 
+  scale_y_continuous(limits = c(0, 100)) + 
+  theme(
+    text = element_text(family = "Helvetica", size = 14), # set text size and family
+    axis.text = element_text(size = 14), # set axis text size
+    axis.text.y = element_text(angle = 0, vjust = 0.5, size = 12), # adjust y-axis text size and alignment
+    axis.text.x = element_text(size = 9), # adjust x-axis text size
+    axis.title.y = element_text(angle = 0, vjust = 0.5, size = 14), # adjust y-axis title size
+    panel.spacing = unit(1, "lines"), # adjust panel spacing
+    strip.text.x = element_text(size = 12), # set label size for x-axis facets
+    strip.text.y = element_text(size = 12, angle = 0, hjust = 0) # set label size and alignment for y-axis facets
+  ) + 
+  scale_x_date(
+    limits = as.Date(c("1999-01-01", "2023-12-31")), 
+    breaks = seq(as.Date("1999-01-01"), as.Date("2023-12-31"), by = "6 years"), 
+    date_labels = "%Y"
+  )
+```
+
+## Figure S5A
+```{r figures5a, cache=TRUE}
+
+```
+
+## Figure S5B
+```{r figures5b, cache=TRUE}
+
+```
+
+## Figure S5C
+```{r figures5c, cache=TRUE}
+
+```
+
+## Figure S6
+```{r figures6, cache=TRUE}
+
+```
+
+## Figure S7
+```{r figures7, cache=TRUE}
+
+```
+
+## Figure S8
+```{r figures8, cache=TRUE}
+
+```
+
+## Figure S9a
+```{r figures9a, cache=TRUE}
+
+```
+
+## Figure S9b
+```{r figures9b, cache=TRUE}
+
+```
+
+## Figure S10
+```{r figures10, cache=TRUE}
+
+```
+
+## Figure S11
+```{r figures11, cache=TRUE}
 
 ```
