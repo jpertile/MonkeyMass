@@ -5,7 +5,259 @@ date: "2024-12-09"
 output: html_document
 ---
 
+This includes the packages used in the code.
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_chunk$set(echo = TRUE)
+library(dplyr)
+library(tidyr)
+library(ggplot2)
+library(lubridate)
+library(brms)
+library(ggdag)
+library(pals)
+library(cetcolor)
+library(lme4)
+library(ggtext)
+library(parallel)
+library(truncnorm)
+library(purrr)
+library(MASS)
+library(zoo)
 ```
 
+# Temperature
+
+## Temperature Data
+This is the hourly temperature data from El Pucú Airport in Formosa (hourly). 
+It has also been summarized at the day-level scale (daily).
+```{r}
+# load hourly temperature data and separate date and time components
+hourly <- read.csv("./hourlytemp.csv") |>
+  separate(DATE, into = c("Date", "Time"), sep = "T")
+
+# convert date column to date format
+hourly$Date <- as.Date(hourly$Date)
+
+# filter to retain only hourly records at the start of each hour
+hourly <- hourly |>
+  filter(substr(Time, 4, 5) == "00" & substr(Time, 7, 8) == "00")
+
+# aggregate hourly data into daily summaries
+daily <- hourly %>%
+  group_by(Date) %>%
+  filter(sum(!is.na(temp)) / n() >= 0.95) %>%  # retain days with at least 95% valid data
+  summarize(
+    mean_temp = mean(temp, na.rm = TRUE),  # calculate mean temperature
+    prop_above_35 = mean(temp > 35, na.rm = TRUE),  # proportion of hourly temperatures above 35
+    prop_below_20 = mean(temp < 20, na.rm = TRUE)  # proportion of hourly temperatures below 20
+  )
+
+# add a column for month and day
+daily <- mutate(daily, month_day = format(Date, "%m-%d"))
+
+# calculate the day of the year from month and day
+daily$day_of_year <- as.numeric(format(as.Date(daily$month_day, format = "%m-%d"), "%j"))
+
+# process hourly data with similar columns
+hourly <- hourly %>%
+  mutate(
+    month_day = format(Date, "%m-%d"),
+    day_of_year = as.numeric(format(as.Date(month_day, format = "%m-%d"), "%j"))
+  )
+
+```
+
+This is the temperature data from Estancia Guaycolec (temperature_eg). 
+It has also been summarized at the day-level scale (temperature_eg_daily).
+```{r}
+# read temperature data and convert date column
+temperature_eg <- read.csv("./Temp-edited2_updated02Dec23v3.csv")
+temperature_eg$Date <- as.Date(temperature_eg$Date)
+
+# create daily summaries for temperature data
+temperature_eg_daily <- temperature_eg %>%
+  group_by(Date) %>%
+  filter(sum(!is.na(Temperature)) / n() >= 0.95) %>%  # retain days with at least 95% valid data
+  summarize(
+    mean_temp = mean(Temperature, na.rm = TRUE),  # mean temperature
+    prop_above_35 = mean(Temperature > 35, na.rm = TRUE),  # proportion above 35
+    prop_below_20 = mean(Temperature < 20, na.rm = TRUE),  # proportion below 20
+    variance = var(Temperature, na.rm = TRUE)  # variance of temperature
+  )
+
+# add columns for month-day and day of the year to daily data
+temperature_eg_daily <- temperature_eg_daily %>%
+  mutate(
+    month_day = format(Date, "%m-%d"),
+    day_of_year = as.numeric(format(as.Date(month_day, format = "%m-%d"), "%j"))
+  )
+
+# repeat similar processing for the full dataset
+temperature_eg <- temperature_eg %>%
+  mutate(
+    month_day = format(Date, "%m-%d"),
+    day_of_year = as.numeric(format(as.Date(month_day, format = "%m-%d"), "%j"))
+  )
+```
+
+## Temperature Functions
+These functions calculate temperature values in the past month. 
+```{r}
+last_month_temp <- function(Date) {
+  # convert input to a date object
+  input_date <- as.Date(Date)
+  
+  # create a range of dates covering the last 30 days
+  date_range <- input_date - 30:0
+  
+  # subset the data for the specified date range
+  subset_data <- filter(daily, Date %in% date_range)
+  
+  # check if at least 95% of the data is available
+  if (length(subset_data$mean_temp) / 31 >= 0.95) {
+    # calculate the average temperature
+    avg_temp <- mean(subset_data$mean_temp, na.rm = TRUE)
+    return(avg_temp)
+  } else {
+    return(NA)  # return NA if insufficient data
+  }
+}
+
+last_month_temp_ut_prop <- function(Date) {
+  # convert input to a date object
+  input_date <- as.Date(Date)
+  
+  # create a range of dates covering the last 30 days
+  date_range <- input_date - 30:0
+  
+  # subset the data for the specified date range
+  subset_data <- filter(daily, Date %in% date_range)
+  
+  # check if at least 95% of the data is available
+  if (length(subset_data$prop_above_35) / 31 >= 0.95) {
+    # calculate the mean proportion above 35
+    mean_above_35 <- mean(subset_data$prop_above_35, na.rm = TRUE)
+    return(mean_above_35)
+  } else {
+    return(NA)  # return NA if insufficient data
+  }
+}
+```
+
+These functions calculate temperature values in the past year. 
+```{r}
+last_year_temp <- function(Date) {
+  # convert input to a date object
+  input_date <- as.Date(Date)
+  
+  # create a range of dates covering the last 365 days
+  date_range <- input_date - 365:0
+  
+  # subset the data for the specified date range
+  subset_data <- filter(daily, Date %in% date_range)
+  
+  # check if at least 95% of the data is available
+  if (length(subset_data$mean_temp) / 365 >= 0.95) {
+    # calculate the average temperature
+    avg_temp <- mean(subset_data$mean_temp, na.rm = TRUE)
+    return(avg_temp)
+  } else {
+    return(NA)  # return NA if insufficient data
+  }
+}
+
+last_year_temp_ut_prop <- function(Date) {
+  # convert input to a date object
+  input_date <- as.Date(Date)
+  
+  # create a range of dates covering the last 365 days
+  date_range <- input_date - 365:0
+  
+  # subset the data for the specified date range
+  subset_data <- filter(daily, Date %in% date_range)
+  
+  # check if at least 95% of the data is available
+  if (length(subset_data$prop_above_35) / 365 >= 0.95) {
+    # calculate the mean proportion above 35
+    mean_above_35 <- mean(subset_data$prop_above_35, na.rm = TRUE)
+    return(mean_above_35)
+  } else {
+    return(NA)  # return NA if insufficient data
+  }
+}
+
+last_year_temp_lt_prop <- function(Date) {
+  # convert input to a date object
+  input_date <- as.Date(Date)
+  
+  # create a range of dates covering the last 365 days
+  date_range <- input_date - 365:0
+  
+  # subset the data for the specified date range
+  subset_data <- filter(daily, Date %in% date_range)
+  
+  # check if at least 95% of the data is available
+  if (length(subset_data$prop_below_20) / 365 >= 0.95) {
+    # calculate the mean proportion below 20
+    mean_below_20 <- mean(subset_data$prop_below_20, na.rm = TRUE)
+    return(mean_below_20)
+  } else {
+    return(NA)  # return NA if insufficient data
+  }
+}
+
+```
+
+
+# Dataset
+
+```{r}
+#load data
+biometrics7 <- read.csv("./biometrics7.csv")
+
+biometrics7$Sex <- as.factor(biometrics7$Sex)  # convert sex to factor
+sexcolor_palette <- c("F" = "#498467", "M" = "#9067c6")  # color palette for sex
+
+biometrics7$life_history <- factor(biometrics7$life_history, levels = c("predispersal", "floater", "territory_holder"))  # reorder life_history factor
+lhcolor_palette <- c("predispersal" = "#DF6873", "floater" = "#AA5EE8", "territory_holder" = "#9DACFF")  # color palette for life history
+
+# create ordered factors for birth status variables
+biometrics7$BirthWithinYearfactor <- factor(biometrics7$BirthWithinYear, 
+                                            levels = c(0, 2, 1), 
+                                            labels = c("no birth", "unknown", "birth"), 
+                                            ordered = TRUE)
+biometrics7$BirthWithinNextYearfactor <- factor(biometrics7$BirthWithinNextYear, 
+                                                levels = c(0, 2, 1), 
+                                                labels = c("no birth", "unknown", "birth"), 
+                                                ordered = TRUE)
+biometrics7$BirthWithinLast5Monthsfactor <- factor(biometrics7$BirthWithinLast5Months, 
+                                                   levels = c(0, 2, 1), 
+                                                   labels = c("no birth", "unknown", "birth"), 
+                                                   ordered = TRUE)
+
+# standardize biometric data, and then unscale the variables I do not want to be scaled
+numeric_columns <- sapply(biometrics7, is.numeric)
+biometrics7_scaled <- biometrics7 |> 
+  mutate(across(all_of(names(numeric_columns)[numeric_columns]), scale)) |> 
+  mutate(day_of_year = biometrics7$day_of_year, 
+         time_since_first_entry = biometrics7$time_since_first_entry,
+         decades_since_first_entry = biometrics7$decades_since_first_entry,
+         BirthWithinYear = biometrics7$BirthWithinYear,
+         BirthWithinNextYear = biometrics7$BirthWithinNextYear,
+         BirthWithinLast5Months = biometrics7$BirthWithinLast5Months,
+         age = biometrics7$age)
+
+# scale territory_holder data,
+#and then unscale the variables I do not want to be scaled
+biometrics7_scaled_th <- filter(biometrics7, life_history == "territory_holder")
+biometrics7_scaled_th[, numeric_columns] <- scale(biometrics7_scaled_th[, numeric_columns])
+biometrics7_scaled_th <- biometrics7_scaled_th |> mutate(day_of_year = filter(biometrics7, life_history == "territory_holder")$day_of_year) |>
+  mutate(time_since_first_entry = filter(biometrics7, life_history == "territory_holder")$time_since_first_entry) |>
+  mutate(decades_since_first_entry = filter(biometrics7, life_history == "territory_holder")$decades_since_first_entry) |>
+  mutate(BirthWithinYear = filter(biometrics7, life_history == "territory_holder")$BirthWithinYear) |>
+  mutate(BirthWithinNextYear = filter(biometrics7, life_history == "territory_holder")$BirthWithinNextYear) |>
+  mutate(BirthWithinLast5Months = filter(biometrics7, life_history == "territory_holder")$BirthWithinLast5Months)
+
+
+```
