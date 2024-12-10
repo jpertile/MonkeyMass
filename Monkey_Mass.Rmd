@@ -43,7 +43,8 @@ This is the hourly temperature data from El Pucú Airport in Formosa (hourly).
 It has also been summarized at the day-level scale (daily).
 ```{r temperaturepucu, cache=TRUE}
 # load hourly temperature data and separate date and time components
-hourly <- read.csv("./hourlytemp.csv") |>
+hourly <- 
+  read.csv("./Data_and_Metadata/ElPucuAirportTemperature/Pucuhourlytemp.csv") |>
   separate(DATE, into = c("Date", "Time"), sep = "T")
 
 # convert date column to date format
@@ -57,7 +58,7 @@ hourly <- hourly |>
 daily <- hourly %>%
   group_by(Date) %>%
   filter(sum(!is.na(temp)) / n() >= 0.95) %>%  # retain days with at least 95% valid data
-  summarize(
+  dplyr::summarize(
     mean_temp = mean(temp, na.rm = TRUE),  # calculate mean temperature
     prop_above_35 = mean(temp > 35, na.rm = TRUE),  # proportion of hourly temperatures above 35
     prop_below_20 = mean(temp < 20, na.rm = TRUE)  # proportion of hourly temperatures below 20
@@ -82,14 +83,15 @@ This is the temperature data from Estancia Guaycolec (temperature_eg).
 It has also been summarized at the day-level scale (temperature_eg_daily).
 ```{r temperatureeg, cache=TRUE}
 # read temperature data and convert date column
-temperature_eg <- read.csv("./Temp-edited2_updated02Dec23v3.csv")
+temperature_eg <- 
+  read.csv("./Data_and_Metadata/EstanciaGuaycolecTemperature/EstanciaGuaycolecTemp.csv")
 temperature_eg$Date <- as.Date(temperature_eg$Date)
 
 # create daily summaries for temperature data
 temperature_eg_daily <- temperature_eg %>%
   group_by(Date) %>%
   filter(sum(!is.na(Temperature)) / n() >= 0.95) %>%  # retain days with at least 95% valid data
-  summarize(
+  dplyr::summarize(
     mean_temp = mean(Temperature, na.rm = TRUE),  # mean temperature
     prop_above_35 = mean(Temperature > 35, na.rm = TRUE),  # proportion above 35
     prop_below_20 = mean(Temperature < 20, na.rm = TRUE),  # proportion below 20
@@ -224,7 +226,7 @@ last_year_temp_lt_prop <- function(Date) {
 
 ```{r dataset, cache=TRUE}
 #load data
-biometrics7 <- read.csv("./biometrics7.csv")
+biometrics7 <- read.csv("./Data_and_Metadata/FinalDataset/biometrics7.csv")
 
 biometrics7$Sex <- as.factor(biometrics7$Sex)  # convert sex to factor
 sexcolor_palette <- c("F" = "#498467", "M" = "#9067c6")  # color palette for sex
@@ -292,15 +294,15 @@ TableS1 <- biometrics7 |>
 knitr::kable(TableS1)
 ```
 
-## Body length sample size
+## Body length summary stats
 ```{r bodylengthsamplesize}
 bodylengthsamplesize <- biometrics7 |> 
   filter(!is.na(life_history)) |> 
   filter(!is.na(Bodylength)) |> 
   group_by(life_history, Sex) |> 
   dplyr::summarise(
-    mean = round(mean(Bodylength, na.rm = T), -1),
-    sd = round(sd(Bodylength, na.rm = T), -1),
+    mean = round(mean(Bodylength, na.rm = T), 1),
+    sd = round(sd(Bodylength, na.rm = T), 1),
     individuals = n_distinct(Subject),
     measurements = sum(!is.na(Bodylength))
   )
@@ -560,7 +562,7 @@ bootstrap_function <- function(data) {
   # calculate mean weight for each BirthWithinYearfactor in the bootstrap sample
   means <- bootstrap_sample |>
     group_by(BirthWithinYearfactor) |>
-    summarize(mean_weight = mean(Weight, na.rm = TRUE))
+    dplyr::summarize(mean_weight = mean(Weight, na.rm = TRUE))
   
   # extract means for "birth" and "no birth"
   mean_birth <- means |>
@@ -788,7 +790,7 @@ bootstrap_results_binned <- bootstrap_results |>
     random_value_bin = cut(random_value, breaks = seq(0, 1, by = 0.2))  # reduced number of bins
   ) |>
   group_by(bootstrapped_diff_bin, random_value_bin) |>
-  summarize(
+  dplyr::summarize(
     mean_product = mean(product, na.rm = TRUE),  # calculate mean of product for each bin
     .groups = 'drop'  # avoid keeping grouping structure
   )
