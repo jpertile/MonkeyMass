@@ -14,6 +14,7 @@ knitr::opts_chunk$set(echo = TRUE)
 knitr::opts_chunk$set(cache = TRUE)
 ```
 
+### Packages
 This includes the packages used in the code.
 ```{r packages}
 library(dplyr)
@@ -31,6 +32,7 @@ library(truncnorm)
 library(purrr)
 library(MASS)
 library(zoo)
+library(Hmisc)
 ```
 
 # Temperature
@@ -271,6 +273,50 @@ biometrics7_scaled$Date <- as.Date(biometrics7_scaled$Date)
 biometrics7_scaled_th$Date <- as.Date(biometrics7_scaled_th$Date)
 ```
 
+# Summary statistics
+
+## Table S1
+```{r tables1, cache=TRUE,}
+TableS1 <- biometrics7 |> 
+  filter(!is.na(life_history)) |> 
+  filter(!is.na(Weight)) |> 
+  group_by(life_history, Sex) |> 
+  dplyr::summarise(
+    mean = round(mean(Weight, na.rm = T), -1),
+    sd = round(sd(Weight, na.rm = T), -1),
+    individuals = n_distinct(Subject),
+    measurements = sum(!is.na(Weight))
+  )
+
+knitr::kable(TableS1)
+```
+
+## Effect sizes for models
+```{r effectsizes, cache=TRUE}
+th_only <- biometrics7 |> filter(life_history == "territory_holder") |>
+  filter(!is.na(Weight)) |> 
+   dplyr::summarize(
+    mean = round(mean(Weight, na.rm = T), -1),
+    sd = round(sd(Weight, na.rm = T), -1),
+    individuals = n_distinct(Subject),
+    measurements = sum(!is.na(Weight))
+  )
+knitr::kable(th_only)
+
+all_lh <- biometrics7 |>
+  filter(!is.na(Weight)) |> 
+  filter(!is.na(life_history)) |> 
+  dplyr::summarize(
+    mean = round(mean(Weight, na.rm = T), -1),
+    sd = round(sd(Weight, na.rm = T), -1),
+    individuals = n_distinct(Subject),
+    measurements = sum(!is.na(Weight))
+  )
+
+knitr::kable(all_lh)
+```
+
+
 # Bayesian Models
 
 ## Model 1
@@ -283,17 +329,18 @@ Model1 <- brm(
     life_history + (1 | Subject),  # model formula
   data = biometrics7_scaled,  # scaled dataset
   family = gaussian(),  # gaussian family for continuous outcome
-  iter = 6000,  # number of iterations
+  iter = 5000,  # number of iterations
   chains = 4,  # number of mcmc chains
   control = list(adapt_delta = 0.99),  # control settings to improve convergence
   prior = c(
-    prior(normal(0.05, 0.2), class = "b", coef = "decades_since_first_entry"),  # prior for decades_since_first_entry
+    prior(normal(0, 0.7), class = "b", coef = "decades_since_first_entry"),  # prior for decades_since_first_entry
     prior(normal(1, 1), class = "b", coef = "life_historyfloater"),  # prior for life_history = floater
     prior(normal(1, 1), class = "b", coef = "life_historyterritory_holder"),  # prior for life_history = territory_holder
     prior(cauchy(0, 1), class = "sd", group = "Subject")  # prior for subject-level random effects
-  ),
-  cores = parallel::detectCores()  # use all available cores for faster computation
+  ) 
 )
+
+summary(Model1)
 
 # summarize the posterior results with credible intervals at 5.5% and 94.5%
 summary_results1 <- posterior_summary(Model1, probs = c(0.055, 0.945), robust = TRUE)
@@ -305,6 +352,19 @@ rounded_summary1 <- round(summary_results1, 2)
 knitr::kable(rounded_summary1)
 
 ```
+To interpret this, an effect size of one is equivalent to 170g.
+2023 is 2.4 decades after 1999. An increase of 2.4 decades converts to:
+
+```{r effectsizecalculation, cache=TRUE}
+#calculation for effect size of decade:
+2.4*170*0.28
+#decade change * one standard deviation * effect size from Model 1 for decade
+
+#should be about 110 g
+```
+
+an increase of ~110 grams, holding all other variables constant.
+
 
 ## Model 2
 ### Model 2F
@@ -376,7 +436,6 @@ Model3F <- brm(
   control = list(adapt_delta = 0.999),
   prior = c(
     prior(normal(0, 0.7), class = "b"), 
-    prior(normal(0, 0.33), class = "b", coef = "decades_since_first_entry"),  
     prior(cauchy(0, 0.7), class = "sd", group = "Subject")
   ))
 
@@ -402,7 +461,6 @@ Model3M <- brm(
   # cores = parallel::detectCores(), 
   prior = c(
     prior(normal(0, 0.7), class = "b"), 
-    prior(normal(0, 0.33), class = "b", coef = "decades_since_first_entry"),  
     prior(cauchy(0, 0.7), class = "sd", group = "Subject")
   ))
 
@@ -999,50 +1057,312 @@ ggplot() +
 
 ## Figure S5A
 ```{r figures5a, cache=TRUE}
-
+ggplot(filter(biometrics7, !is.na(life_history) & !is.na(Sex)), aes(x = temp_new_year, y = Weight)) + 
+  geom_point(aes(color = life_history, shape = life_history), size = 4, alpha = 0.7) +
+  scale_color_manual(values = lhcolor_palette) +
+  geom_smooth(method = "lm", color = "black", se = TRUE, fill = "lightgray", level = 0.89) +
+  facet_grid(Sex ~ life_history, 
+             labeller = labeller(
+               Sex = c("M" = "Male", "F" = "Female"),
+               life_history = c("predispersal" = "Predispersal",
+                                "floater" = "Floater",
+                                "territory_holder" = "Reproductive adult")
+             )) +
+  theme_minimal() +
+  labs(x = "Mean temperature in past year (ºC)", y = "Mass\n(g)") +
+  theme(text = element_text(family = "Helvetica", size = 14),
+        axis.text = element_text(size = 14),
+        axis.text.y = element_text(size = 12, angle = 0, vjust = 0.5),
+        axis.text.x = element_text(size = 12),
+        axis.title.y = element_text(angle = 0, vjust = 0.5, size = 14),
+        panel.spacing = unit(1.3, "lines"),
+        strip.text.x = element_text(size = 9),  
+        strip.text.y = element_text(size = 12, angle = 0, hjust = 0)) + 
+  guides(color = FALSE, shape = FALSE) 
 ```
 
 ## Figure S5B
 ```{r figures5b, cache=TRUE}
-
+ggplot(filter(biometrics7, !is.na(life_history) & !is.na(Sex)), aes(x = temp_ltprop_year, y = Weight)) + 
+  geom_point(aes(color = life_history, shape = life_history), size = 4, alpha = 0.7) +
+  scale_color_manual(values = lhcolor_palette) +
+  geom_smooth(method = "lm", color = "black", se = TRUE, fill = "lightgray", level = 0.89) +
+  facet_grid(Sex ~ life_history, 
+             labeller = labeller(
+               Sex = c("M" = "Male", "F" = "Female"),
+               life_history = c("predispersal" = "Predispersal",
+                                "floater" = "Floater",
+                                "territory_holder" = "Reproductive adult")
+             )) +
+  theme_minimal() +
+  labs(x = "Proportion of hours below 20ºC in past year", y = "Mass\n(g)") +
+  theme(text = element_text(family = "Helvetica", size = 14),
+        axis.text = element_text(size = 14),
+        axis.text.y = element_text(size = 12, angle = 0, vjust = 0.5),
+        axis.text.x = element_text(size = 6),
+        axis.title.y = element_text(angle = 0, vjust = 0.5, size = 14),
+        panel.spacing = unit(1, "lines"),
+        strip.text.x = element_text(size = 9), 
+        strip.text.y = element_text(size = 12, angle = 0, hjust = 0)) + 
+  guides(color = FALSE, shape = FALSE) 
 ```
 
 ## Figure S5C
 ```{r figures5c, cache=TRUE}
-
+ggplot(filter(biometrics7, !is.na(life_history) & !is.na(Sex)), aes(x = temp_utprop_year, y = Weight)) + 
+  geom_point(aes(color = life_history, shape = life_history), size = 4, alpha = 0.7) +
+  scale_color_manual(values = lhcolor_palette) +
+  geom_smooth(method = "lm", color = "black", se = TRUE, fill = "lightgray", level = 0.89) +
+  facet_grid(Sex ~ life_history, 
+             labeller = labeller(
+               Sex = c("M" = "Male", "F" = "Female"),
+               life_history = c("predispersal" = "Predispersal",
+                                "floater" = "Floater",
+                                "territory_holder" = "Reproductive adult")
+             )) +
+  theme_minimal() +
+  labs(x = "Proportion of hours above 35ºC in past year", y = "Mass\n(g)") +
+  theme(text = element_text(family = "Helvetica", size = 14),
+        axis.text = element_text(size = 14),
+        axis.text.y = element_text(size = 12, angle = 0, vjust = 0.5),
+        axis.text.x = element_text(size = 6),
+        axis.title.y = element_text(angle = 0, vjust = 0.5, size = 14),
+        panel.spacing = unit(1, "lines"),
+        strip.text.x = element_text(size = 9),
+        strip.text.y = element_text(size = 12, angle = 0, hjust = 0)) + 
+  guides(color = FALSE, shape = FALSE) 
 ```
 
 ## Figure S6
 ```{r figures6, cache=TRUE}
-
+set.seed(13)
+# plot with dynamically calculated summary statistics
+ggplot(filter(biometrics7, life_history == "territory_holder"), aes(x = Sex, y = Weight)) + 
+  # add jittered points for each observation
+  geom_jitter(size = 3, alpha = 0.5, aes(color = Sex), height = 0, width = 0.05, shape = "square") + 
+  # add calculated mean points in black
+  stat_summary(
+    fun = mean, geom = "point", color = "black", # explicitly set color to black
+    size = 6, shape = 18, position = position_dodge(width = 0.5)
+  ) + 
+  # add straight line for SD from the center point, with thicker line
+  stat_summary(
+    fun.data = function(x) {
+      # calculate mean and SD manually
+      mean_value <- mean(x, na.rm = TRUE)
+      sd_value <- sd(x, na.rm = TRUE)
+      # return the y-values for the SD line (mean +- 1 SD)
+      return(data.frame(y = mean_value + c(-sd_value, sd_value), 
+                        ymin = mean_value - sd_value, ymax = mean_value + sd_value))
+    }, 
+    geom = "errorbar", color = "black", # explicitly set color to black for errorbars
+    size = 1, width = 0, position = position_dodge(width = 0.5) # increase line thickness with size = 2
+  ) + 
+  scale_color_manual(values = sexcolor_palette) + 
+  theme_minimal() + 
+  theme(
+    text = element_text(family = "Helvetica", size = 15),
+    axis.text = element_text(size = 14),
+    axis.text.y = element_text(angle = 0, vjust = 0.5),
+    axis.title.y = element_text(angle = 0, vjust = 0.5)
+  ) + 
+  labs(y = "Body\nmass\n(g)", x = "Sex") + 
+  guides(color = FALSE)
 ```
 
 ## Figure S7
 ```{r figures7, cache=TRUE}
-
+ggplot(filter(biometrics7, !is.na(life_history) & !is.na(Sex)), aes(x = Date, y = Bodylength)) +
+  geom_point(aes(color = life_history, shape = life_history), size = 4, alpha = 0.7) +
+  scale_color_manual(values = lhcolor_palette) +
+  geom_smooth(method = "lm", fill = "lightgray", color = "black", level = 0.89) +
+  facet_grid(Sex ~ life_history, 
+             labeller = labeller(
+               Sex = c("M" = "Male", "F" = "Female"),
+               life_history = c("predispersal" = "Predispersal",
+                                "floater" = "Floater",
+                                "territory_holder" = "Reproductive adult")
+             )) +
+  theme_minimal() +
+  guides(shape = FALSE, color = FALSE) +
+  theme(text = element_text(family = "Helvetica", size = 14),
+        axis.text = element_text(size = 14),
+        axis.text.y = element_text(angle = 0, vjust = 0.5, size = 12),
+        axis.text.x = element_text(size = 9),
+        axis.title.y = element_text(angle = 0, vjust = 0.5, size = 14),
+        panel.spacing = unit(1, "lines"),
+        strip.text.x = element_text(size = 12),   # Life history label styling
+        strip.text.y = element_text(size = 12, angle = 0, hjust = 0)) +  # Sex label styling
+  labs(y = "Body\nlength\n(cm)", x = "Year") +
+  scale_x_date(limits = as.Date(c("1999-01-01", "2023-12-31")), 
+               breaks = seq(as.Date("1999-01-01"), as.Date("2023-12-31"), by = "6 years"),
+               date_labels = "%Y")
 ```
 
 ## Figure S8
 ```{r figures8, cache=TRUE}
+ggplot(filter(biometrics7, 
+              life_history %in% c("territory_holder", 
+                                  "floater", "predispersal")), 
+       aes(x = day_of_year, y = Weight, color = life_history)) +
+  geom_point(alpha = 0.5, size = 4, aes(shape = life_history)) +
+  geom_smooth(color = "black",
+              method = "gam", formula = y ~ s(x, bs = "cc"), 
+              level = 0.89,
+              method.args = list(family = "gaussian"), se = T, fill = "lightgray",
+              linewidth = 1) +  
+  scale_color_manual(values = lhcolor_palette) +
+  theme_minimal() +
+  labs(x = "Day of Year", y = "Mass (g)", 
+       color = "Life History Stage", shape = "Life History Stage") +
+    theme(text = element_text(family = "Helvetica", size = 15),
+        axis.text = element_text(size = 14),
+        axis.text.y = element_text(angle = 0, vjust = 0.5),
+        axis.title.y = element_text(angle = 0, vjust = 0.5)) +
+  facet_grid(Sex ~ life_history, 
+             labeller = labeller(
+               Sex = c("M" = "Male", "F" = "Female"),
+               life_history = c("predispersal" = "Predispersal",
+                                "floater" = "Floater",
+                                "territory_holder" = "Reproductive adult")
+             )) +
+  guides(color = F, shape = F) +
+  theme(text = element_text(family = "Helvetica", size = 14),
+        axis.text = element_text(size = 14),
+        axis.text.y = element_text(size = 12, angle = 0, vjust = 0.5),
+        axis.text.x = element_text(size = 12),
+        axis.title.y = element_text(angle = 0, vjust = 0.5, size = 14),
+        panel.spacing = unit(1, "lines"),
+        strip.text.x = element_text(size = 12),  
+        strip.text.y = element_text(size = 12, angle = 0, hjust = 0)) +  
+  guides(color = FALSE, shape = FALSE) 
 
 ```
 
 ## Figure S9a
 ```{r figures9a, cache=TRUE}
+set.seed(13)
+ggplot(filter(biometrics7_scaled_th, BirthWithinYear != max(BirthWithinYear)),
+       aes(x = Weight, y = BirthWithinYear)) +
+  geom_jitter(size = 4, alpha = 0.5, aes(color = Sex), shape = "square",
+              width = 0, height = 0.05) + 
+  scale_color_manual(values = sexcolor_palette) +
+  geom_smooth(method = "glm", method.args = list(family = "binomial"), 
+              aes(color = Sex), fill = "lightgray", linewidth = 1.5) + 
+  facet_wrap(~Sex, labeller = as_labeller(c("F" = "Female", "M" = "Male"))) + 
+  theme_minimal() +
+  theme(
+    text = element_text(family = "Helvetica", size = 15),
+    axis.text = element_text(size = 14),
+    axis.text.y = element_text(angle = 0, vjust = 0.5),
+    axis.title.y = element_text(angle = 0, vjust = 0.5)
+  ) +
+  labs(y = "Was there a\nbirth in the group\nin the last year?",
+       x = "Scaled weight") +
+  guides(color = F)
 
 ```
 
 ## Figure S9b
 ```{r figures9b, cache=TRUE}
-
+ggplot(filter(biometrics7_scaled_th, BirthWithinNextYear != max(BirthWithinNextYear)),
+       aes(x = Weight, y = BirthWithinNextYear)) +
+  geom_jitter(size = 4, alpha = 0.5, aes(color = Sex), shape = "square",
+              width = 0, height = 0.05) + 
+  scale_color_manual(values = sexcolor_palette) +
+  geom_smooth(method = "glm", method.args = list(family = "binomial"), 
+              aes(color = Sex), fill = "lightgray", linewidth = 1.5,
+              level = 0.89) + 
+  facet_wrap(~Sex, labeller = as_labeller(c("F" = "Female", "M" = "Male"))) + 
+  theme_minimal() +
+  theme(
+    text = element_text(family = "Helvetica", size = 15),
+    axis.text = element_text(size = 14),
+    axis.text.y = element_text(angle = 0, vjust = 0.5),
+    axis.title.y = element_text(angle = 0, vjust = 0.5)
+  ) +
+  labs(y = "Was there a\nbirth in the group\nin the next year?",
+       x = "Scaled weight") +
+  guides(color = F)
 ```
 
 ## Figure S10
 ```{r figures10, cache=TRUE}
-
+set.seed(13)
+ggplot(filter(biometrics7_scaled_th, BirthWithinYear != "2"),
+       aes(x = Date, y = BirthWithinYear)) +
+  geom_jitter(size = 3, alpha = 0.7, height = 0.075, width = 0, 
+              shape = "square", aes(color = Sex)) +
+  scale_color_manual(values = sexcolor_palette, labels = c("F" = "Female", "M" = "Male")) +
+  geom_smooth(aes(y = BirthWithinYear), method = "glm", 
+              method.args = list(family = "binomial"), se = T,
+              color = "black", fill = "lightgray",
+              level = 0.89) + 
+  theme_minimal() +
+  theme(
+    text = element_text(family = "Helvetica", size = 15),
+    axis.text = element_text(size = 14),
+    axis.text.y = element_text(angle = 0, vjust = 0.5),
+    axis.title.y = element_text(angle = 0, vjust = 0.5)
+  ) +
+  labs(y = "Was there a\nbirth in the group\nin the last year?",
+       x = "Year", color = "Sex") +  # Add color legend title
+  scale_x_date(limits = as.Date(c("1999-01-01", "2023-12-31")), 
+               breaks = seq(as.Date("1999-01-01"), as.Date("2023-12-31"), by = "6 years"),
+               date_labels = "%Y")
 ```
 
 ## Figure S11
 ```{r figures11, cache=TRUE}
+#first scale the temperature data
+numeric_columnsdaily <- sapply(daily, is.numeric)
+daily_scaled <- daily
+daily_scaled[, numeric_columnsdaily] <- scale(daily_scaled[, numeric_columnsdaily])
+daily_scaled <- daily_scaled |> mutate(day_of_year = daily$day_of_year) |>
+  mutate(decades_since_first_entry = as.numeric(difftime(Date, min(Date), units = "days")) / 3652.5)
 
+ggplot(filter(biometrics7_scaled_th, BirthWithinYearfactor != "unknown"), aes(x = day_of_year)) + 
+  geom_rect(xmin = 274, xmax = 334, ymin = -Inf, ymax = Inf, 
+            fill = "lightblue", alpha = 0.2) +
+  geom_text(x = 304, y = 1.5, label = "Birth\nSeason", 
+            hjust = 0.5, color = "black", size = 4, family = "Helvetica") +
+  geom_point(aes(y = Weight, color = life_history), size = 4, alpha = 0.7, 
+             shape = "square") +
+  scale_color_manual(values = lhcolor_palette) +
+  geom_smooth(method = "gam", formula = y ~ s(x, bs = "cc"), 
+              method.args = list(family = "gaussian"), 
+              size = 2, aes(y = Weight, color = life_history),
+              fill = "lightgray") +
+  geom_smooth(data = daily_scaled, aes(x = day_of_year, y = mean_temp), 
+              color = "maroon", method = "gam", formula = y ~ s(x, bs = "cc"), 
+              size = 2, linetype = 2, se = FALSE, 
+              method.args = list(family = "gaussian")) +
+  theme_minimal() +
+  labs(
+    x = "Day of Year",
+    shape = "Was there a\nbirth in the group\nin the last year?",
+    y = "Scaled\nmean\ndaily\ntemperature\n(red)\n\nScaled\nbody\nmass\n(blue)"
+  ) +
+  facet_grid(
+    Sex ~ BirthWithinYearfactor,
+    labeller = labeller(
+      Sex = c("M" = "Male", "F" = "Female"),
+      BirthWithinYearfactor = c("no birth" = "No birth", "birth" = "Birth")
+    )
+  ) +
+  theme(
+    text = element_text(family = "Helvetica", size = 14),
+    axis.text = element_text(size = 14),
+    axis.text.y = element_text(size = 14, angle = 0, vjust = 0.5),
+    axis.text.x = element_text(size = 12),
+    axis.title.y = element_text(angle = 0, vjust = 0.5, size = 10),
+    panel.spacing = unit(1, "lines"),
+    strip.text.x = element_text(size = 12), 
+    strip.text.y = element_text(size = 12, angle = 0, hjust = 0) 
+  ) +
+  guides(color = FALSE, shape = FALSE) +
+  theme(
+  panel.background = element_rect(fill = "white", color = NA),
+  plot.background = element_rect(fill = "white", color = NA)
+)
 ```
