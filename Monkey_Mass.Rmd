@@ -1319,7 +1319,8 @@ ggplot(filter(biometrics7,
 ## Figure S10
 ```{r figures10, cache=TRUE}
 set.seed(13)
-ggplot(filter(biometrics7_scaled_th, BirthWithinYear != "2"),
+ggplot(filter(biometrics7, BirthWithinYear != max(BirthWithinYear) &
+                                       life_history == "territory_holder"),
        aes(x = Date, y = BirthWithinYear)) +
   geom_jitter(size = 3, alpha = 0.7, height = 0.075, width = 0, 
               shape = "square", aes(color = Sex)) +
@@ -1333,9 +1334,9 @@ ggplot(filter(biometrics7_scaled_th, BirthWithinYear != "2"),
     text = element_text(family = "Helvetica", size = 15),
     axis.text = element_text(size = 14),
     axis.text.y = element_text(angle = 0, vjust = 0.5),
-    axis.title.y = element_text(angle = 0, vjust = 0.5)
+     axis.title.y = element_text(angle = 0, vjust = 0.5, size = 12),
   ) +
-  labs(y = "Was there a\nbirth in the group\nin the last year?",
+  labs(y = "Was there a  \nbirth in the group  \nin the last year?   ",
        x = "Year", color = "Sex") +  # Add color legend title
   scale_x_date(limits = as.Date(c("1999-01-01", "2023-12-31")), 
                breaks = seq(as.Date("1999-01-01"), as.Date("2023-12-31"), by = "6 years"),
