@@ -334,6 +334,18 @@ all_lh <- biometrics7 |>
   )
 
 knitr::kable(all_lh)
+
+all_lh_bodylength <- biometrics7 |>
+  filter(!is.na(Bodylength)) |> 
+  filter(!is.na(life_history)) |> 
+  dplyr::summarize(
+    mean = round(mean(Bodylength, na.rm = T), 1),
+    sd = round(sd(Bodylength, na.rm = T), 1),
+    individuals = n_distinct(Subject),
+    measurements = sum(!is.na(Bodylength))
+  )
+
+knitr::kable(all_lh_bodylength)
 ```
 
 
