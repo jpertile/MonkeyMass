@@ -1,12 +1,13 @@
 ---
 title: "Monkey_Mass"
-author: "Jonathan Pertile"
-date: "2024-12-09"
 output:
   html_document:
     toc: true 
     toc_float: true
 ---
+
+Warning: this code will take up to an hour to run all the way through. 
+You can find code alongside its output in the knitted html document.
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
@@ -290,6 +291,23 @@ TableS1 <- biometrics7 |>
 
 knitr::kable(TableS1)
 ```
+
+## Body length sample size
+```{r bodylengthsamplesize}
+bodylengthsamplesize <- biometrics7 |> 
+  filter(!is.na(life_history)) |> 
+  filter(!is.na(Bodylength)) |> 
+  group_by(life_history, Sex) |> 
+  dplyr::summarise(
+    mean = round(mean(Bodylength, na.rm = T), -1),
+    sd = round(sd(Bodylength, na.rm = T), -1),
+    individuals = n_distinct(Subject),
+    measurements = sum(!is.na(Bodylength))
+  )
+
+knitr::kable(bodylengthsamplesize)
+```
+
 
 ## Effect sizes for models
 ```{r effectsizes, cache=TRUE}
@@ -1242,7 +1260,9 @@ ggplot(filter(biometrics7,
 ## Figure S9a
 ```{r figures9a, cache=TRUE}
 set.seed(13)
-ggplot(filter(biometrics7_scaled_th, BirthWithinYear != max(BirthWithinYear)),
+ggplot(filter(biometrics7, 
+              BirthWithinYear != max(BirthWithinYear) &
+                                       life_history == "territory_holder"),
        aes(x = Weight, y = BirthWithinYear)) +
   geom_jitter(size = 4, alpha = 0.5, aes(color = Sex), shape = "square",
               width = 0, height = 0.05) + 
@@ -1251,21 +1271,27 @@ ggplot(filter(biometrics7_scaled_th, BirthWithinYear != max(BirthWithinYear)),
               aes(color = Sex), fill = "lightgray", linewidth = 1.5) + 
   facet_wrap(~Sex, labeller = as_labeller(c("F" = "Female", "M" = "Male"))) + 
   theme_minimal() +
+  scale_x_continuous(breaks = c(1100, 1300, 1500),
+                      labels = c("1100", "1300", "1500")) +
   theme(
     text = element_text(family = "Helvetica", size = 15),
     axis.text = element_text(size = 14),
+    axis.text.x = element_text(size = 11),
     axis.text.y = element_text(angle = 0, vjust = 0.5),
-    axis.title.y = element_text(angle = 0, vjust = 0.5)
+    axis.title.y = element_text(angle = 0, vjust = 0.5, size = 11),
+    panel.spacing = unit(1.2, "lines")
   ) +
-  labs(y = "Was there a\nbirth in the group\nin the last year?",
-       x = "Scaled weight") +
+  labs(y = "Was there a  \nbirth in the group  \nin the last year?   ",
+       x = "Body mass (g)") +
   guides(color = F)
 
 ```
 
 ## Figure S9b
 ```{r figures9b, cache=TRUE}
-ggplot(filter(biometrics7_scaled_th, BirthWithinNextYear != max(BirthWithinNextYear)),
+ggplot(filter(biometrics7, 
+              BirthWithinNextYear != max(BirthWithinNextYear)  &
+                                       life_history == "territory_holder"),
        aes(x = Weight, y = BirthWithinNextYear)) +
   geom_jitter(size = 4, alpha = 0.5, aes(color = Sex), shape = "square",
               width = 0, height = 0.05) + 
@@ -1274,15 +1300,19 @@ ggplot(filter(biometrics7_scaled_th, BirthWithinNextYear != max(BirthWithinNextY
               aes(color = Sex), fill = "lightgray", linewidth = 1.5,
               level = 0.89) + 
   facet_wrap(~Sex, labeller = as_labeller(c("F" = "Female", "M" = "Male"))) + 
+  scale_x_continuous(breaks = c(1100, 1300, 1500),
+                      labels = c("1100", "1300", "1500")) +
   theme_minimal() +
   theme(
     text = element_text(family = "Helvetica", size = 15),
     axis.text = element_text(size = 14),
+    axis.text.x = element_text(size = 11),
     axis.text.y = element_text(angle = 0, vjust = 0.5),
-    axis.title.y = element_text(angle = 0, vjust = 0.5)
+    axis.title.y = element_text(angle = 0, vjust = 0.5, size = 11),
+    panel.spacing = unit(1.5, "lines")
   ) +
-  labs(y = "Was there a\nbirth in the group\nin the next year?",
-       x = "Scaled weight") +
+  labs(y = "Was there a   \nbirth in the group   \nin the next year?   ",
+       x = "Body mass (g)") +
   guides(color = F)
 ```
 
