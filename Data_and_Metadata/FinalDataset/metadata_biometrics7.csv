@@ -1,0 +1,34 @@
+﻿Column,Description,Units
+Row number,The row in the dataset,#
+Subject,"The name of the individual captured, usually followed by a /",Characters
+Group,The name of the group an individual was captured in,Characters
+Date,The day the individual was measured,YYYY-MM-DD
+Weight,The body mass of the individual in grams,number (in grams)
+Bodylength,"The crown-to-rump length of the individual, measured in cm",number (in cm)
+Sex,The sex of the individual,M for male or F for female
+life_history,The life-history category of the individual at the time of measurement.,"predispersal for predispersal individuals, floater for solitary floaters, and territory holder for reproductive adults"
+temp_new,the mean temperature in the 30 days preceeding the capture,celcius
+temp_new_year,the mean temperature in the 365 days preceeding the capture,celcius
+temp_utprop,the proportion of hours in the past month above 35 degrees Celcius,decimal number
+temp_ltprop,the proportion of hours in the past month below 20 degrees Celcius,decimal number
+temp_utprop_year,the proportion of hours in the past year above 35 degrees Celcius,decimal number
+temp_ltprop_year,the proportion of hours in the past year below 20 degrees Celcius,decimal number
+BirthWithinYear,Whether there was a birth in the group in the year preceeding the measurement,"1 = yes, 0 = no, 2 = unknown"
+BirthWithinNextYear,Whether there was a birth in the group in the year following the measurement,"1 = yes, 0 = no, 2 = unknown"
+BirthWithinLast5Months,Whether there was a birth in the group in the 5 months preceeding the measurement,"1 = yes, 0 = no, 2 = unknown"
+DOBnextyear,"If there was a birth in the year following a measurment, the date of birth of that event",YYYY-MM-DD
+DaysUntilBirth,How many days from the measurement until the birth the following year?,# of days
+onemonthfruit,The number of fruit estimated to be available in the subject's group in the month before its capture,# of fruit
+twelvemonthfruit,The number of fruit estimated to be available in the subject's group in the twelve months before its capture,# of fruit
+age,The age in years of the individual for those with a known date of birth,# of years
+DOB,The date of birth of the measured individual,YYYY-MM-DD
+firstyeartemp_new,The mean temperature at el Pucú Airport during the first year of an individual's life,Celcius
+firstyearfruit,The number of fruit estimated to be available in the subject's group in the first twelve months of its life,# of fruit
+firstyeartemp_ut_prop,The proportion of hours above 35 degrees Celcius at el Pucú Airport during the first year of an individual's life,decimal number
+firstyeartemp_lt_prop,The proportion of hours below 20 degrees Celcius at el Pucú Airport during the first year of an individual's life,decimal number
+day_of_year,"The day of the year, as a number, of the measurement",number (1 to 366)
+time_since_first_entry,The number of years seperating the measurement from the very first measurement in the dataset,# of years
+decades_since_first_entry,The number of decades seperating the measurement from the very first measurement in the dataset,# of decades
+BirthWithinYearfactor,"Whether there was a birth in the group in the year preceeding the measurement, stored as a character string","""birth"" = there was a birth, ""no birth"" = there was not a birth, ""unknown"" = unclear if there was a birt"
+BirthWithinNextYearfactor,"Whether there was a birth in the group in the year following the measurement, stored as a character string","""birth"" = there was a birth, ""no birth"" = there was not a birth, ""unknown"" = unclear if there was a birt"
+BirthWithinLast5Monthsfactor,"Whether there was a birth in the group in the 5 months preceeding the measurement, stored as a character string","""birth"" = there was a birth, ""no birth"" = there was not a birth, ""unknown"" = unclear if there was a birt"

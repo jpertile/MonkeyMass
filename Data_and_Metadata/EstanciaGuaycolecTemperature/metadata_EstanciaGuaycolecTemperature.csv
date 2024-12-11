@@ -1,0 +1,4 @@
+﻿Column,Description,Units
+Date,The date of the temperature reading.,YYYY-MM-DD
+Time,The hour of the temperature reading.,H (24 hour format)
+temp,Air temperature reading,Celcius

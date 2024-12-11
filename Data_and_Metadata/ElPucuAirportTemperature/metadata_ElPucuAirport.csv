@@ -1,0 +1,4 @@
+﻿Column,Description,Units
+DATE,The date and time of the temperature reading.,YYYY-MM-DDHH:MM:SS
+TMP,"The air temperature at the Formosa airport, as downloaded from the NOAA website.","""+"" degrees Celcius times 100"
+temp,TMP converted to degrees Celcius,Celcius
