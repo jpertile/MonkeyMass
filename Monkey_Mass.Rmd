@@ -1,5 +1,5 @@
 ---
-title: "Monkey_Mass"
+title: "Owl_Monkey_Mass"
 output:
   html_document:
     toc: true 
@@ -878,7 +878,7 @@ ggplot(filtered_data, aes(x = age, y = Weight)) +
                "floater" = "Floater",  
                "territory_holder" = "Reproductive adult") 
   ) + 
-  labs(x = "Age (years)", y = "Weight\n(g)",  
+  labs(x = "Age (years)", y = "Body\nmass\n(g)",  
        color = "Life History Stage", shape = "Life History Stage") + 
   theme_minimal() + 
   scale_x_continuous( 
